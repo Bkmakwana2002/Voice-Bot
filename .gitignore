@@ -1,0 +1,14 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Local artifacts that are large or noisy. Recordings/transcripts are deliverables,
+# so they are NOT ignored — but raw temp files are.
+*.tmp
+.DS_Store
