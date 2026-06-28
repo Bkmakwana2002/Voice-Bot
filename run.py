@@ -112,10 +112,13 @@ def main() -> None:
 
         if args.tunnel:
             print("Verifying the tunnel reaches the relay from the public internet ...")
-            if not _wait_for_public_health(config.PUBLIC_URL):
-                print("The tunnel did not become reachable. Try again, or check cloudflared.")
-                return
-            print("Tunnel verified — Twilio will be able to reach the relay.")
+            if _wait_for_public_health(config.PUBLIC_URL):
+                print("Tunnel verified — Twilio will be able to reach the relay.")
+            else:
+                print("Note: couldn't confirm the tunnel from this machine. This is often "
+                      "a false alarm on cellular/NAT (your laptop can't reach its own "
+                      "public URL even though Twilio can). Proceeding — watch for the "
+                      "[twiml] and [ws] lines below to confirm Twilio actually connects.")
 
         if args.serve_only:
             print(f"Serving at {config.PUBLIC_URL}. Press Ctrl+C to stop.")

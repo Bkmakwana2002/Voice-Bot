@@ -15,7 +15,9 @@ import threading
 import time
 from pathlib import Path
 
-_URL_RE = re.compile(r"https://[-a-z0-9]+\.trycloudflare\.com")
+# Match the random quick-tunnel host (e.g. del-assisted-coupled-hidden), but NOT
+# cloudflared's control endpoint api.trycloudflare.com, which appears in early logs.
+_URL_RE = re.compile(r"https://(?!api\.)[-a-z0-9]+\.trycloudflare\.com")
 
 
 def find_cloudflared() -> str | None:
