@@ -7,12 +7,36 @@ it in itself — no manual copying.
 """
 from __future__ import annotations
 
+import os
 import re
+import shutil
 import subprocess
 import threading
 import time
+from pathlib import Path
 
 _URL_RE = re.compile(r"https://[-a-z0-9]+\.trycloudflare\.com")
+
+
+def find_cloudflared() -> str | None:
+    """Locate the cloudflared binary without depending on a perfectly set PATH.
+
+    Order: $CLOUDFLARED_PATH, then PATH, then a copy dropped in the repo root.
+    """
+    env_path = os.getenv("CLOUDFLARED_PATH")
+    if env_path and Path(env_path).exists():
+        return env_path
+
+    on_path = shutil.which("cloudflared")
+    if on_path:
+        return on_path
+
+    repo_root = Path(__file__).resolve().parent.parent
+    for name in ("cloudflared.exe", "cloudflared"):
+        candidate = repo_root / name
+        if candidate.exists():
+            return str(candidate)
+    return None
 
 
 def start_cloudflared(port: int, timeout: int = 45) -> tuple[subprocess.Popen, str]:
@@ -20,20 +44,27 @@ def start_cloudflared(port: int, timeout: int = 45) -> tuple[subprocess.Popen, s
     (process, public_url). Raises RuntimeError if cloudflared is missing or no URL
     appears within `timeout` seconds.
     """
+    binary = find_cloudflared()
+    if not binary:
+        raise RuntimeError(
+            "cloudflared not found. Easiest fix on Windows: download "
+            "cloudflared-windows-amd64.exe from "
+            "github.com/cloudflare/cloudflared/releases/latest, rename it to "
+            "cloudflared.exe, and drop it in this repo folder. (Or install via "
+            "winget/brew and reopen your terminal, or set CLOUDFLARED_PATH.) "
+            "Alternatively, start your own tunnel, set PUBLIC_URL in .env, and run "
+            "without --tunnel."
+        )
     try:
         proc = subprocess.Popen(
-            ["cloudflared", "tunnel", "--url", f"http://localhost:{port}"],
+            [binary, "tunnel", "--url", f"http://localhost:{port}"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
         )
-    except FileNotFoundError as exc:
-        raise RuntimeError(
-            "cloudflared is not installed or not on PATH. Install it "
-            "(`brew install cloudflared`), or start your own tunnel and set "
-            "PUBLIC_URL in .env, then run without --tunnel."
-        ) from exc
+    except OSError as exc:
+        raise RuntimeError(f"Failed to launch cloudflared at {binary}: {exc!r}") from exc
 
     url: str | None = None
     recent: list[str] = []
