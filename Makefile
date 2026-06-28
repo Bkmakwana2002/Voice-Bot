@@ -14,14 +14,14 @@ env:  ## Copy the example env file (won't overwrite an existing .env)
 tunnel:  ## Start an ngrok tunnel to the relay port (run in its own terminal)
 	ngrok http 8000
 
-run:  ## Start the relay and run ALL scenarios end to end
-	python run.py --all
+run:  ## Start tunnel + relay and run ALL scenarios end to end
+	python run.py --all --tunnel
 
 one:  ## Run a single scenario: make one S=07-closed-day
-	python run.py --scenario $(S)
+	python run.py --scenario $(S) --tunnel
 
-serve:  ## Start only the relay server (drive calls from elsewhere)
-	python run.py --serve-only
+serve:  ## Start tunnel + relay only (drive calls from elsewhere)
+	python run.py --serve-only --tunnel
 
 list:  ## List available scenario ids
 	python -m src.caller --list

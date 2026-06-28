@@ -45,6 +45,8 @@ async def twiml(scenario_id: str, request: Request) -> HTMLResponse:
     the agent on the other end of the call.
     """
     ws_url = config.PUBLIC_URL.replace("https://", "wss://").replace("http://", "ws://")
+    print(f"[twiml] Twilio fetched TwiML for scenario={scenario_id}; "
+          f"telling it to stream to {ws_url}/ws/{scenario_id}")
     vxml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
@@ -52,6 +54,19 @@ async def twiml(scenario_id: str, request: Request) -> HTMLResponse:
   </Connect>
 </Response>"""
     return HTMLResponse(content=vxml, media_type="text/xml")
+
+
+async def _connect_openai(headers: dict):
+    """Open the Realtime WS, tolerating both modern and legacy `websockets` APIs.
+
+    websockets >= 14 (and the asyncio client) uses `additional_headers`; the older
+    top-level `websockets.connect` uses `extra_headers`. Try both so the relay works
+    regardless of the installed version.
+    """
+    try:
+        return await websockets.connect(config.REALTIME_URL, additional_headers=headers)
+    except TypeError:
+        return await websockets.connect(config.REALTIME_URL, extra_headers=headers)
 
 
 def _session_update(scenario: scenarios.Scenario) -> dict:
@@ -81,6 +96,7 @@ def _session_update(scenario: scenarios.Scenario) -> dict:
 @app.websocket("/ws/{scenario_id}")
 async def media_stream(ws: WebSocket, scenario_id: str) -> None:
     await ws.accept()
+    print(f"[ws] Twilio media stream connected for scenario={scenario_id}")
     try:
         scenario = scenarios.get(scenario_id)
     except KeyError:
@@ -95,7 +111,17 @@ async def media_stream(ws: WebSocket, scenario_id: str) -> None:
         "OpenAI-Beta": "realtime=v1",
     }
 
-    async with websockets.connect(config.REALTIME_URL, additional_headers=headers) as oai:
+    try:
+        oai = await _connect_openai(headers)
+    except Exception as exc:
+        print(f"[ws] FAILED to connect to OpenAI Realtime: {exc!r}")
+        transcript.note(f"could not connect to OpenAI Realtime: {exc!r}")
+        transcript.close()
+        await ws.close()
+        return
+
+    print("[ws] connected to OpenAI Realtime")
+    try:
         # 1) Configure the session (persona + g711 audio + VAD).
         await oai.send(json.dumps(_session_update(scenario)))
 
@@ -168,5 +194,10 @@ async def media_stream(ws: WebSocket, scenario_id: str) -> None:
             await asyncio.gather(twilio_to_openai(), openai_to_twilio())
         except websockets.ConnectionClosed:
             pass
-        finally:
-            transcript.close()
+    finally:
+        print(f"[ws] call ended for scenario={scenario_id}")
+        try:
+            await oai.close()
+        except Exception:
+            pass
+        transcript.close()
